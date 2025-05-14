@@ -7,40 +7,72 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+    const colorScheme = useColorScheme();
 
-  return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
-          default: {},
-        }),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
+    return (
+        <Tabs
+            screenOptions={{
+                tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+                tabBarShowLabel: false,
+                headerShown: false,
+                tabBarButton: HapticTab,
+                tabBarBackground: TabBarBackground,
+                tabBarStyle: {
+                    position: 'absolute',
+                    bottom: 0,
+                    height: 70,
+                    paddingBottom: 10,
+                    paddingTop: 10,
+                    backgroundColor: 'transparent',
+                    borderTopWidth: 0,
+                    elevation: 0,
+                },
+            }}
 
-        <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
-    </Tabs>
-  );
+        >
+            <Tabs.Screen
+                name="rewards"
+                options={{
+                    tabBarIcon: ({ color }) => (
+                        <IconSymbol size={30} name="gift" color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="friends"
+                options={{
+                    tabBarIcon: ({ color }) => (
+                        <FontAwesome5 size={30} name="user-friends" color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="index"
+                options={{
+                    tabBarIcon: ({ color }) => (
+                        <IconSymbol size={40} name="house.fill" color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="profile"
+                options={{
+                    tabBarIcon: ({ color }) => (
+                        <IconSymbol size={30} name="paperplane.fill" color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="settings"
+                options={{
+                    tabBarIcon: ({ color }) => (
+                        <IconSymbol size={30} name="gear" color={color} />
+                    ),
+                }}
+            />
+        </Tabs>
+    );
 }
