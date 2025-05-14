@@ -66,7 +66,7 @@ export default function WelcomeScreen() {
 
                     // Vertraging vóór navigatie
                     setTimeout(() => {
-                        router.push("../screens/HomeScreen");
+                        router.replace("/(tabs)");
                     }, 300);
                 } else {
                     // Swipe niet ver genoeg, reset animatie

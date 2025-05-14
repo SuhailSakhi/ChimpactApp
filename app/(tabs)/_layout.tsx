@@ -31,7 +31,6 @@ export default function TabLayout() {
                     elevation: 0,
                 },
             }}
-
         >
             <Tabs.Screen
                 name="rewards"
@@ -73,6 +72,10 @@ export default function TabLayout() {
                     ),
                 }}
             />
+
+            {/* Verberg deze routes uit de tab bar */}
+            <Tabs.Screen name="host" options={{ href: null }} />
+            <Tabs.Screen name="join" options={{ href: null }} />
         </Tabs>
     );
 }

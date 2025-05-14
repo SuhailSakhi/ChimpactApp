@@ -16,11 +16,11 @@ const HomeScreen = () => {
 
     useFocusEffect(
         React.useCallback(() => {
-            fadeAnim.setValue(0);  // Reset fade effect whenever screen is focused
+            fadeAnim.setValue(0);
             Animated.timing(fadeAnim, {
-                toValue: 1,  // Opacity to 1 (fade in)
-                duration: 1000,  // Fade-in duration
-                easing: Easing.out(Easing.ease),  // Smooth easing
+                toValue: 1,
+                duration: 1000,
+                easing: Easing.out(Easing.ease),
                 useNativeDriver: true,
             }).start();
         }, [])
@@ -39,14 +39,14 @@ const HomeScreen = () => {
                 <View style={styles.buttonContainer}>
                     <TouchableOpacity
                         style={styles.button}
-                        onPress={() => router.push("../screens/HostGameScreen")}
+                        onPress={() => router.push("/(tabs)/host")}
                     >
                         <Text style={styles.buttonText}>Host Game</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                         style={styles.button}
-                        onPress={() => router.push("../screens/JoinGameScreen")}
+                        onPress={() => router.push("/(tabs)/join")}
                     >
                         <Text style={styles.buttonText}>Join Game</Text>
                     </TouchableOpacity>
@@ -61,14 +61,14 @@ export default HomeScreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#1A1B25", // Zelfde als eindkleur WelcomeScreen
+        backgroundColor: "#1A1B25",
         justifyContent: "center",
         alignItems: "center",
-        overflow: "hidden", // Voorkomt witte balken en andere overflow
+        overflow: "hidden",
     },
     inner: {
         flex: 1,
-        width: "100%", // Zorg ervoor dat de breedte van de container gelijk is
+        width: "100%",
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
