@@ -7,18 +7,18 @@ import {
     StyleSheet,
     Text,
     View,
+    TouchableOpacity,
+    Image,
 } from "react-native";
 
 export default function WelcomeScreen() {
     const router = useRouter();
     const [swiping, setSwiping] = useState(false);
 
-    // Animatie refs
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const swipeFadeAnim = useRef(new Animated.Value(1)).current;
-    const swipeFadeAnimRef = useRef(1); // Houdt de huidige waarde van swipeFadeAnim bij
+    const swipeFadeAnimRef = useRef(1);
 
-    // Reset animaties bij terugkeren naar scherm
     useFocusEffect(
         useCallback(() => {
             fadeAnim.setValue(0);
@@ -34,7 +34,6 @@ export default function WelcomeScreen() {
         }, [])
     );
 
-    // Swipe handling
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => true,
@@ -44,7 +43,6 @@ export default function WelcomeScreen() {
                     Math.abs(gestureState.dy)
                 );
 
-                // Begin fade tijdens swipe
                 if (distance > 20 && swipeFadeAnimRef.current === 1) {
                     Animated.timing(swipeFadeAnim, {
                         toValue: 0,
@@ -63,13 +61,10 @@ export default function WelcomeScreen() {
 
                 if (distance > 80 && swipeFadeAnimRef.current === 0) {
                     setSwiping(true);
-
-                    // Vertraging vóór navigatie
                     setTimeout(() => {
                         router.replace("/(tabs)/home");
                     }, 300);
                 } else {
-                    // Swipe niet ver genoeg, reset animatie
                     Animated.timing(swipeFadeAnim, {
                         toValue: 1,
                         duration: 300,
@@ -84,44 +79,81 @@ export default function WelcomeScreen() {
     ).current;
 
     return (
-        <View style={styles.container} {...panResponder.panHandlers}>
-            <Animated.Text style={[styles.title, { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) }]}>
-                Welkom bij Chimpact!
+        <TouchableOpacity
+            activeOpacity={1}
+            style={styles.container}
+            onPress={() => router.replace("/(tabs)/home")}
+            {...panResponder.panHandlers}
+        >
+            <View style={styles.centerContent}>
+                <Animated.Text
+                    style={[
+                        styles.title,
+                        { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) },
+                    ]}
+                >
+                    Chimpers
+                </Animated.Text>
+                <Animated.Text
+                    style={[
+                        styles.subtitle,
+                        { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) },
+                    ]}
+                >
+                    Welkom bij Chimpers! Maak je klaar voor een avontuur vol uitdagingen en wordt een chigga.
+                </Animated.Text>
+            </View>
+
+            <Animated.Text
+                style={[styles.hint, { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) }]}
+            >
+                {swiping ? "Bezig met navigeren..." : "Tik of swipe om te starten 🚀"}
             </Animated.Text>
-            <Animated.Text style={[styles.subtitle, { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) }]}>
-                {swiping ? "Bezig met navigeren..." : "Swipe in om het avontuur te starten 🚀"}
-            </Animated.Text>
-            <Animated.Text style={[styles.hint, { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) }]}>
-                Swipe in eender welke richting om verder te gaan.
-            </Animated.Text>
-        </View>
+
+            <Image
+                source={require("../../assets/images/monkey.png")}
+                style={styles.monkey}
+                resizeMode="contain"
+            />
+        </TouchableOpacity>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        justifyContent: "center",
+        justifyContent: "space-between",
         alignItems: "center",
-        padding: 20,
-        backgroundColor: "#11121A",  // Achtergrond kleur blijft hetzelfde
+        paddingVertical: 60,
+        paddingHorizontal: 20,
+        backgroundColor: "#11121A",
+    },
+    centerContent: {
+        alignItems: "center",
+        justifyContent: "center",
+        flex: 1,
     },
     title: {
         fontSize: 28,
         fontWeight: "bold",
-        color: "#8EFFA0",
-        marginBottom: 10,
+        color: "#ffffff",
+        marginBottom: 8,
     },
     subtitle: {
-        fontSize: 18,
-        color: "#ffffff",
-        marginBottom: 20,
-        textAlign: "center",
+        fontSize: 16,
+        color: "#cccccc",
     },
     hint: {
         fontSize: 14,
         color: "#888",
         textAlign: "center",
-        marginTop: 20,
+        marginBottom: 30,
+    },
+    monkey: {
+        position: "absolute",
+        left: 0,
+        bottom: 80,
+        width: 80,
+        height: 80,
     },
 });

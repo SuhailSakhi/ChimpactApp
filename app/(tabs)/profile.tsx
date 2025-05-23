@@ -1,4 +1,4 @@
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileScreen from '@/app/screen/ProfileScreen';
 
 export default function Rewards() {
     return <ProfileScreen />;

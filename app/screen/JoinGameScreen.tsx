@@ -10,6 +10,7 @@ import {
     Alert,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useRouter } from "expo-router";
 
 const JoinGameScreen = () => {
     const [modalVisible, setModalVisible] = useState(false);
@@ -17,6 +18,7 @@ const JoinGameScreen = () => {
     const [code, setCode] = useState("");
     const [scanned, setScanned] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
+    const router = useRouter();
 
     useEffect(() => {
         if (!permission) {
@@ -59,6 +61,15 @@ const JoinGameScreen = () => {
 
             <TouchableOpacity style={styles.button} onPress={() => setQrVisible(true)}>
                 <Text style={styles.buttonText}>Scan QR code</Text>
+            </TouchableOpacity>
+
+            {/* Nieuwe knoppen */}
+            <TouchableOpacity style={styles.button} onPress={() => router.push("/runner")}>
+                <Text style={styles.buttonText}>Start als Runner</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={() => router.push("/hunter")}>
+                <Text style={styles.buttonText}>Start als Hunter</Text>
             </TouchableOpacity>
 
             {/* Code invoer modal */}
