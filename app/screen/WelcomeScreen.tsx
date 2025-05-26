@@ -100,7 +100,7 @@ export default function WelcomeScreen() {
                         { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) },
                     ]}
                 >
-                    Welkom bij Chimpers! Maak je klaar voor een avontuur vol uitdagingen en wordt een chigga.
+                    Welkom bij Chimpers! Maak je klaar voor een avontuur vol uitdagingen en wordt een Chigger.
                 </Animated.Text>
             </View>
 
