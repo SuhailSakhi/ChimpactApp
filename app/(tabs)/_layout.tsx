@@ -22,9 +22,9 @@ export default function TabLayout() {
                 tabBarBackground: TabBarBackground,
                 tabBarStyle: {
                     position: 'absolute',
-                    bottom: 0,
+                    bottom: Platform.OS === 'android' ? 20 : 0, // ⬅️ verhoog op Android
                     height: 70,
-                    paddingBottom: 10,
+                    paddingBottom: Platform.OS === 'android' ? 20 : 10,
                     paddingTop: 10,
                     backgroundColor: 'transparent',
                     borderTopWidth: 0,

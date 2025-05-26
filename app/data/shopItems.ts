@@ -5,7 +5,7 @@ export type ShopItem = {
     emoji: string;
     price: number;
 };
-// sgxgsfgdfg
+
 export const hunterShopItems = [
     {
         id: 1,
