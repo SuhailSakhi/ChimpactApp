@@ -39,6 +39,7 @@
     "express": "^5.1.0",
     "nativewind": "^4.1.23",
     "pg": "^8.16.0",
+    "postgres": "^3.4.7",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.2",

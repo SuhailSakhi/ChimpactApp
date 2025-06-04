@@ -26,6 +26,7 @@ export default function TabLayout() {
                     height: 70,
                     paddingBottom: Platform.OS === 'android' ? 20 : 10,
                     paddingTop: 10,
+                    justifyContent: 'center',
                     backgroundColor: 'transparent',
                     borderTopWidth: 0,
                     elevation: 0,
@@ -36,7 +37,7 @@ export default function TabLayout() {
                 name="rewards"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <IconSymbol size={30} name="gift" color={color} />
+                        <IconSymbol size={30} name="medal.fill" color={color} />
                     ),
                 }}
             />
@@ -44,7 +45,7 @@ export default function TabLayout() {
                 name="friends"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <FontAwesome5 size={30} name="user-friends" color={color} />
+                        <IconSymbol size={30} name="person.2.fill" color={color} />
                     ),
                 }}
             />
@@ -52,7 +53,7 @@ export default function TabLayout() {
                 name="home"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <IconSymbol size={40} name="house.fill" color={color} />
+                        <IconSymbol size={36} name="house.fill" color={color} />
                     ),
                 }}
             />
@@ -60,7 +61,7 @@ export default function TabLayout() {
                 name="profile"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <IconSymbol size={30} name="paperplane.fill" color={color} />
+                        <IconSymbol size={30} name="person.crop.circle.fill" color={color} />
                     ),
                 }}
             />
