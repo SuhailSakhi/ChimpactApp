@@ -1,19 +1,27 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 const SettingsScreen = () => {
+    const router = useRouter();
     const [notificationsOn, setNotificationsOn] = useState(true);
 
     return (
         <SafeAreaView style={styles.container}>
             <Text style={styles.title}>Instellingen</Text>
 
-            <TouchableOpacity style={styles.buttonRed}>
+            <TouchableOpacity
+                style={styles.buttonRed}
+                onPress={() => router.push("/privacy")}
+            >
                 <Text style={styles.buttonText}>Privacy</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.buttonRed}>
+            <TouchableOpacity
+                style={styles.buttonRed}
+                onPress={() => router.push("/profile")}
+            >
                 <Text style={styles.buttonText}>Profielgegevens</Text>
             </TouchableOpacity>
 
@@ -24,10 +32,6 @@ const SettingsScreen = () => {
                 <Text style={styles.buttonText}>
                     Meldingen: {notificationsOn ? "Aan" : "Uit"}
                 </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.buttonRed}>
-                <Text style={styles.buttonText}>Account verwijderen</Text>
             </TouchableOpacity>
         </SafeAreaView>
     );
@@ -44,9 +48,6 @@ const styles = StyleSheet.create({
         paddingTop: 80,
         paddingHorizontal: 20,
     },
-
-
-
     title: {
         fontSize: 26,
         fontWeight: "bold",

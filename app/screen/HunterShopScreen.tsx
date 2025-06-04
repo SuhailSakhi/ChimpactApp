@@ -4,15 +4,32 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CloseButton from "@/components/CloseButton";
 import { hunterShopItems, ShopItem } from "../data/shopItems";
 import { useRouter } from "expo-router";
+import { useGameTimer } from "@/context/GameTimerContext"; // ⬅️ Timer context import
 
 export default function HunterShopScreen() {
     const [coins, setCoins] = useState(100); // voorbeeldwaarde
     const router = useRouter();
+    const { addTime } = useGameTimer(); // ⬅️ Timer functie
 
     const handleBuy = (item: ShopItem) => {
         if (coins >= item.price) {
             setCoins(coins - item.price);
             alert(`${item.name} gekocht!`);
+
+            // ⏱️ Power-up: 5 minuten extra tijd
+            if (item.id === 2) {
+                addTime(300); // +5 min
+                return;
+            }
+
+            // 👀 Power-up "Hint": runners tijdelijk zichtbaar
+            if (item.id === 3) {
+                router.push({
+                    pathname: "/hunter",
+                    params: { showRunners: "true" },
+                });
+                return;
+            }
         } else {
             alert("Niet genoeg coins.");
         }
@@ -43,10 +60,16 @@ export default function HunterShopScreen() {
                 </ScrollView>
 
                 <View style={styles.footer}>
-                    <TouchableOpacity style={styles.footerButton} onPress={() => router.push("/hunter")}>
+                    <TouchableOpacity
+                        style={styles.footerButton}
+                        onPress={() => router.push("/hunter")}
+                    >
                         <Text style={styles.footerText}>Map</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.footerButton} onPress={() => router.push("/hunterchallenges")}>
+                    <TouchableOpacity
+                        style={styles.footerButton}
+                        onPress={() => router.push("/hunterchallenges")}
+                    >
                         <Text style={styles.footerText}>Challenges</Text>
                     </TouchableOpacity>
                 </View>
@@ -76,7 +99,6 @@ const styles = StyleSheet.create({
     buyButton: { backgroundColor: "#2ECC71", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
     buyText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
     footer: { gap: 15, marginTop: 20 },
-
     footerButton: {
         backgroundColor: "#A32D2D",
         paddingVertical: 15,
@@ -92,10 +114,9 @@ const styles = StyleSheet.create({
     },
     coinsText: {
         fontSize: 16,
-        color: '#8EFFA0',
-        textAlign: 'center',
+        color: "#8EFFA0",
+        textAlign: "center",
         marginBottom: 10,
-        fontWeight: 'bold',
+        fontWeight: "bold",
     },
-
 });

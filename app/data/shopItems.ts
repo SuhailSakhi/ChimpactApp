@@ -17,15 +17,15 @@ export const hunterShopItems = [
     {
         id: 2,
         name: "Extra tijd",
-        description: "De Hunter krijgt 2 extra minuten zoektijd.",
+        description: "Voegt 5 minuten toe aan de game timer",
         emoji: "🕒",
         price: 30,
     },
     {
         id: 3,
         name: "Hint",
-        description: "Wie het dichtst bij de Hunter is, moet een selfie maken.",
-        emoji: "🧑‍🦱",
+        description: "Alle runners zijn zichtbaar op de map.",
+        emoji: "🗺️",
         price: 60,
     },
 ];
