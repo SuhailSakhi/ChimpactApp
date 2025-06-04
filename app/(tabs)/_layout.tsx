@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
-
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
@@ -22,7 +21,7 @@ export default function TabLayout() {
                 tabBarBackground: TabBarBackground,
                 tabBarStyle: {
                     position: 'absolute',
-                    bottom: Platform.OS === 'android' ? 20 : 0, // ⬅️ verhoog op Android
+                    bottom: Platform.OS === 'android' ? 20 : 0,
                     height: 70,
                     paddingBottom: Platform.OS === 'android' ? 20 : 10,
                     paddingTop: 10,
@@ -36,7 +35,7 @@ export default function TabLayout() {
                 name="rewards"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <IconSymbol size={30} name="gift" color={color} />
+                        <IconSymbol size={30} name="medal.fill" color={color} />
                     ),
                 }}
             />
@@ -44,7 +43,7 @@ export default function TabLayout() {
                 name="friends"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <FontAwesome5 size={30} name="user-friends" color={color} />
+                        <IconSymbol size={30} name="person.2.fill" color={color} />
                     ),
                 }}
             />
@@ -52,15 +51,7 @@ export default function TabLayout() {
                 name="home"
                 options={{
                     tabBarIcon: ({ color }) => (
-                        <IconSymbol size={40} name="house.fill" color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
-                name="profile"
-                options={{
-                    tabBarIcon: ({ color }) => (
-                        <IconSymbol size={30} name="paperplane.fill" color={color} />
+                        <IconSymbol size={36} name="house.fill" color={color} />
                     ),
                 }}
             />
@@ -72,8 +63,6 @@ export default function TabLayout() {
                     ),
                 }}
             />
-
-            {/* Verberg deze routes uit de tab bar */}
             <Tabs.Screen name="host" options={{ href: null }} />
             <Tabs.Screen name="join" options={{ href: null }} />
             <Tabs.Screen name="lobbyHost" options={{ href: null }} />

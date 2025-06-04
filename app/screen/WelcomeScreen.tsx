@@ -92,7 +92,7 @@ export default function WelcomeScreen() {
                         { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) },
                     ]}
                 >
-                    Chimpers
+                    UitJeTent 🎪
                 </Animated.Text>
                 <Animated.Text
                     style={[
@@ -100,14 +100,16 @@ export default function WelcomeScreen() {
                         { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) },
                     ]}
                 >
-                    Welkom bij Chimpers! Maak je klaar voor een avontuur vol uitdagingen en wordt een Chigger.
+                    De wereld wacht buiten op je{"\n"}
+                    dus doe nu mee!
                 </Animated.Text>
+
             </View>
 
             <Animated.Text
                 style={[styles.hint, { opacity: Animated.multiply(fadeAnim, swipeFadeAnim) }]}
             >
-                {swiping ? "Bezig met navigeren..." : "Tik of swipe om te starten 🚀"}
+                {swiping ? "Bezig met navigeren..." : "Tik of swipe om te starten met spelen!🙈"}
             </Animated.Text>
 
             <Image
@@ -151,9 +153,12 @@ const styles = StyleSheet.create({
     },
     monkey: {
         position: "absolute",
+        bottom: 600,
         left: 0,
-        bottom: 80,
         width: 80,
         height: 80,
+        marginLeft: -20, // duwt hem iets buiten het paddingframe
     },
+
+
 });

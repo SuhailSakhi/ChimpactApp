@@ -39,8 +39,8 @@ export const hunterChallenges = [
     },
     {
         id: 3,
-        coins: 300,
-        text: "Spreek een vrouw aan in het wild.",
+        coins: 50,
+        text: "Vang 3 Runners in één spel.",
         icon: "🚨",
         completed: false,
     },
