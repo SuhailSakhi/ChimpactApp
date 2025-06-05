@@ -1,6 +1,6 @@
 // app/screen/JoinGameScreen.tsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     View,
     Text,
@@ -11,49 +11,85 @@ import {
     TextInput,
     Alert,
     ActivityIndicator,
+    Image,
+    ScrollView,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
+
+// Enkel de drie toegestane spellen met bijbehorende afbeelding
+const gameOptions = [
+    {
+        label: "Tag",
+        value: "tag",
+        image: require("../../assets/images/tag.png"),
+    },
+    {
+        label: "HideOut",
+        value: "hideout",
+        image: require("../../assets/images/hideout.png"),
+    },
+    {
+        label: "Capture the Flag",
+        value: "capture_flag",
+        image: require("../../assets/images/capture_flag.png"),
+    },
+];
+
+type Lobby = {
+    id: string;
+    code: string;
+    players: string[];
+    game_type: string;
+};
 
 const JoinGameScreen = () => {
     const router = useRouter();
+    const { playerId, playerName } = useLocalSearchParams<{
+        playerId?: string;
+        playerName?: string;
+    }>();
 
-    // Camera-permissies & scan-states
+    // Camera-permissies & scan-status
     const [permission, requestPermission] = useCameraPermissions();
     const [qrVisible, setQrVisible] = useState(false);
     const [scanned, setScanned] = useState(false);
 
-    // Handmatige lobby-code invoer
+    // Handmatige lobbycode-invoer
     const [codeModalVisible, setCodeModalVisible] = useState(false);
     const [manualCode, setManualCode] = useState("");
 
-    // De code (5-cijferig) die bevestigd is (via QR of handmatig)
+    // Bevestigde lobby (code & id voor update)
     const [resolvedCode, setResolvedCode] = useState("");
+    const [resolvedId, setResolvedId] = useState<string | null>(null);
 
-    // Modal voor gebruikersnaam-invoer
+    // Modal voor gebruikersnaam → toevoegen aan lobbies.players
     const [usernameModalVisible, setUsernameModalVisible] = useState(false);
     const [username, setUsername] = useState("");
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (!permission) {
-            requestPermission();
-        }
-    }, []);
+    // Lijst van publieke lobbies
+    const [publicLobbies, setPublicLobbies] = useState<Lobby[]>([]);
+    const [lobbiesLoading, setLobbiesLoading] = useState<boolean>(true);
 
-    // Stap 1: QR-code gescand
+    // Haal camera-permissie op
+    useEffect(() => {
+        if (!permission) requestPermission();
+    }, [permission, requestPermission]);
+
+    // 1) QR-code is gescand
     const handleBarCodeScanned = ({ data }: { data: string }) => {
         setScanned(true);
         validateCode(data.trim());
     };
 
-    // Stap 2: Handmatige code bevestigen
+    // 2) Handmatige code bevestigen
     const handleJoinWithCode = () => {
         validateCode(manualCode.trim());
     };
 
-    // Stap 3: Controleer of lobby met deze code bestaat
+    // 3) Controleren of lobby met deze code bestaat
     const validateCode = async (code: string) => {
         if (!/^\d{5}$/.test(code)) {
             Alert.alert("Ongeldige code", "Voer een geldige 5-cijferige lobbycode in.");
@@ -61,15 +97,16 @@ const JoinGameScreen = () => {
             setScanned(false);
             return;
         }
-
         setLoading(true);
+
+        // Ophalen van lobby-id én huidige spelers
         const { data, error } = await supabase
             .from("lobbies")
-            .select("code")
+            .select("id, players")
             .eq("code", code)
             .single();
-        setLoading(false);
 
+        setLoading(false);
         if (error || !data) {
             Alert.alert("Lobby niet gevonden", "Er bestaat geen lobby met deze code.");
             setQrVisible(false);
@@ -77,45 +114,74 @@ const JoinGameScreen = () => {
             return;
         }
 
-        // Lobby gevonden: toon gebruikersnaam-modal
         setResolvedCode(code);
+        setResolvedId(data.id);
         setQrVisible(false);
         setScanned(false);
         setCodeModalVisible(false);
+
+        // Als er al een profielnaam is doorgegeven, voeg direct toe en navigeer
+        if (playerName) {
+            const existingPlayers: string[] = data.players || [];
+            if (!existingPlayers.includes(playerName)) {
+                const updatedPlayers = [...existingPlayers, playerName];
+                await supabase
+                    .from("lobbies")
+                    .update({ players: updatedPlayers })
+                    .eq("id", data.id);
+            }
+            router.push({
+                pathname: "/screen/LobbyScreen",
+                params: {
+                    code: code,
+                    isHost: "false",
+                    username: playerName,
+                },
+            });
+            return;
+        }
+
+        // Anders: vraag om gebruikersnaam via modal
         setUsernameModalVisible(true);
     };
 
-    // Stap 4: Gebruikersnaam invoeren en toevoegen aan lobby.players
+    // 4) Gebruikersnaam invullen en toevoegen aan lobby
     const handleSubmitUsername = async () => {
         const trimmedName = username.trim();
         if (!trimmedName) {
             Alert.alert("Fout", "Vul een gebruikersnaam in.");
             return;
         }
+        if (!resolvedId) {
+            Alert.alert("Fout", "Er is geen geldige lobby geselecteerd.");
+            return;
+        }
 
         setLoading(true);
-        // 4a) Haal bestaande players-array op
+        // Haal bestaande spelerslijst op
         const { data: lobbyData, error: fetchError } = await supabase
             .from("lobbies")
             .select("players")
-            .eq("code", resolvedCode)
+            .eq("id", resolvedId)
             .single();
 
         if (fetchError || !lobbyData) {
             setLoading(false);
-            Alert.alert("Fout", "Kon lobby-gegevens niet ophalen.");
+            Alert.alert(
+                "Fout",
+                "Kon lobby-gegevens niet ophalen:\n" + (fetchError?.message || "")
+            );
             return;
         }
 
+        // Voeg toe aan array
         const existingPlayers: string[] = lobbyData.players || [];
-        // 4b) Voeg nieuwe naam toe
         const updatedPlayers = [...existingPlayers, trimmedName];
 
-        // 4c) Update de lobby met de nieuwe array
         const { error: updateError } = await supabase
             .from("lobbies")
             .update({ players: updatedPlayers })
-            .eq("code", resolvedCode);
+            .eq("id", resolvedId);
 
         setLoading(false);
         if (updateError) {
@@ -123,12 +189,80 @@ const JoinGameScreen = () => {
             return;
         }
 
-        // 4d) Sluit modal en navigeer naar LobbyScreen
+        // Navigeer naar LobbyScreen
         setUsernameModalVisible(false);
         router.push({
             pathname: "/screen/LobbyScreen",
-            params: { code: resolvedCode, isHost: "false" },
+            params: {
+                code: resolvedCode,
+                isHost: "false",
+                username: trimmedName,
+            },
         });
+    };
+
+    // --- Ophalen van publieke lobbies uit database, verwijderen lobbies met 0 spelers, en sorteren ---
+    const fetchPublicLobbies = useCallback(async () => {
+        setLobbiesLoading(true);
+        // Haal alle publieke lobby's op
+        const { data, error } = await supabase
+            .from("lobbies")
+            .select("id, code, players, game_type")
+            .eq("is_private", false);
+
+        if (!error && data) {
+            const validLobbies: Lobby[] = [];
+            // Loop door elke opgehaalde lobby
+            for (const lobby of data as Lobby[]) {
+                // Als geen spelers meer in lobby → verwijder uit database
+                if (!lobby.players || lobby.players.length === 0) {
+                    await supabase.from("lobbies").delete().eq("id", lobby.id);
+                } else {
+                    validLobbies.push(lobby);
+                }
+            }
+            // Sorteer valide lobby's op aantal spelers (desc)
+            const sorted = validLobbies.sort(
+                (a, b) => b.players.length - a.players.length
+            );
+
+            setPublicLobbies(sorted);
+        }
+        setLobbiesLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchPublicLobbies();
+    }, [fetchPublicLobbies]);
+
+    // --- Druk op publieke lobby: start join-flow met code ---
+    const handlePublicLobbyPress = async (lobby: Lobby) => {
+        setResolvedCode(lobby.code);
+        setResolvedId(lobby.id);
+
+        // Als er al een profielnaam is doorgegeven, voeg direct toe en navigeer
+        if (playerName) {
+            const existingPlayers: string[] = lobby.players || [];
+            if (!existingPlayers.includes(playerName)) {
+                const updatedPlayers = [...existingPlayers, playerName];
+                await supabase
+                    .from("lobbies")
+                    .update({ players: updatedPlayers })
+                    .eq("id", lobby.id);
+            }
+            router.push({
+                pathname: "/screen/LobbyScreen",
+                params: {
+                    code: lobby.code,
+                    isHost: "false",
+                    username: playerName,
+                },
+            });
+            return;
+        }
+
+        // Anders: houd code/id bij en vraag om gebruikersnaam
+        setUsernameModalVisible(true);
     };
 
     if (permission === null) {
@@ -148,38 +282,101 @@ const JoinGameScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <Text style={styles.title}>Join Game</Text>
-            <Text style={styles.subtitle}>Scan QR of voer code in</Text>
-
-            {/* Knop om QR-code te scannen */}
-            <TouchableOpacity style={styles.button} onPress={() => setQrVisible(true)}>
-                <Text style={styles.buttonText}>Scan QR code</Text>
-            </TouchableOpacity>
-
-            {/* Knop om handmatig code in te voeren */}
+            {/* Toegevoegd: wegknop, absoluut gepositioneerd zodat de rest niet verschuift */}
             <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                    setManualCode("");
-                    setCodeModalVisible(true);
-                }}
+                onPress={() => router.back()}
+                style={styles.closeButtonAbsolute}
             >
-                <Text style={styles.buttonText}>Join private lobby</Text>
+                <Image
+                    source={require("../../assets/images/arrow-back.png")}
+                    style={styles.closeIcon}
+                />
             </TouchableOpacity>
 
-            {/* Knop om als Runner te starten (ongewijzigd) */}
-            <TouchableOpacity style={styles.button} onPress={() => router.push("/runner")}>
-                <Text style={styles.buttonText}>Start als Runner</Text>
-            </TouchableOpacity>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                {/* -------------------------------------------------------------
+                    Titel / Label: “Spel zoeken”
+                ------------------------------------------------------------- */}
+                <Text style={styles.title}>Spel zoeken</Text>
 
-            {/* Knop om als Hunter te starten (ongewijzigd) */}
-            <TouchableOpacity style={styles.button} onPress={() => router.push("/hunter")}>
-                <Text style={styles.buttonText}>Start als Hunter</Text>
-            </TouchableOpacity>
+                {/* -------------------------------------------------------------
+                    QR & Code knoppen
+                ------------------------------------------------------------- */}
+                <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                        style={styles.topButton}
+                        onPress={() => setQrVisible(true)}
+                    >
+                        <Text style={styles.topButtonText}>Scan QR-code</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.topButton}
+                        onPress={() => {
+                            setManualCode("");
+                            setCodeModalVisible(true);
+                        }}
+                    >
+                        <Text style={styles.topButtonText}>Code invoeren</Text>
+                    </TouchableOpacity>
+                </View>
 
-            {/*---------------------------------------------
-          QR Scanner Modal
-      ---------------------------------------------*/}
+                {/* -------------------------------------------------------------
+                    Label voor publieke lobby's
+                ------------------------------------------------------------- */}
+                <View style={styles.publicHeaderRow}>
+                    <Text style={styles.sectionLabel}>Publieke lobby's</Text>
+                    <TouchableOpacity onPress={fetchPublicLobbies} style={styles.refreshBtn}>
+                        <Text style={styles.refreshText}>Ververs</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* -------------------------------------------------------------
+                    Lijst met publieke lobby's
+                ------------------------------------------------------------- */}
+                {lobbiesLoading ? (
+                    <ActivityIndicator size="large" color="#8EFFA0" />
+                ) : (
+                    <ScrollView
+                        style={styles.lobbyList}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                    >
+                        {publicLobbies.map((lobby) => {
+                            const { id, code, players, game_type } = lobby;
+                            const option = gameOptions.find((o) => o.value === game_type);
+                            const imgSource = option?.image;
+                            const label = option?.label || game_type;
+
+                            return (
+                                <TouchableOpacity
+                                    key={id}
+                                    style={styles.lobbyCard}
+                                    onPress={() => handlePublicLobbyPress(lobby)}
+                                >
+                                    {imgSource ? (
+                                        <Image source={imgSource} style={styles.lobbyImage} />
+                                    ) : (
+                                        <View style={[styles.lobbyImage, styles.placeholderImage]}>
+                                            <Text style={styles.placeholderText}>{label}</Text>
+                                        </View>
+                                    )}
+                                    <Text style={styles.lobbyLabel}>{label}</Text>
+                                    <View style={styles.playerCountRow}>
+                                        <Text style={styles.playerCountText}>
+                                            {players.length}
+                                        </Text>
+                                        <Text style={styles.playerCountIcon}>👤</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                )}
+            </ScrollView>
+
+            {/* -------------------------------------------------------------
+                QR Scanner Modal
+            ------------------------------------------------------------- */}
             <Modal visible={qrVisible} animationType="slide">
                 <View style={styles.container}>
                     <CameraView
@@ -188,13 +385,31 @@ const JoinGameScreen = () => {
                         style={StyleSheet.absoluteFillObject}
                     />
                     <TouchableOpacity
-                        style={[styles.button, { position: "absolute", bottom: 60 }]}
+                        style={[
+
+                            styles.topButton,
+
+                            {
+
+                                position: "absolute",
+
+                                bottom: 60,
+
+                                alignSelf: "center",
+
+                                flex: 0,
+
+                                width: "60%",
+
+                            },
+
+                        ]}
                         onPress={() => {
                             setQrVisible(false);
                             setScanned(false);
                         }}
                     >
-                        <Text style={styles.buttonText}>Annuleren</Text>
+                        <Text style={styles.topButtonText}>Annuleren</Text>
                     </TouchableOpacity>
                     {loading && (
                         <View style={styles.loadingOverlay}>
@@ -204,9 +419,9 @@ const JoinGameScreen = () => {
                 </View>
             </Modal>
 
-            {/*---------------------------------------------
-          Handmatige code Modal
-      ---------------------------------------------*/}
+            {/* -------------------------------------------------------------
+                Handmatige code Modal
+            ------------------------------------------------------------- */}
             <Modal visible={codeModalVisible} animationType="slide" transparent>
                 <TouchableOpacity
                     activeOpacity={1}
@@ -227,14 +442,20 @@ const JoinGameScreen = () => {
                         <TouchableOpacity style={styles.modalButton} onPress={handleJoinWithCode}>
                             <Text style={styles.modalButtonText}>Bevestig</Text>
                         </TouchableOpacity>
-                        {loading && <ActivityIndicator size="large" color="#8EFFA0" />}
+                        {loading && (
+                            <ActivityIndicator
+                                size="large"
+                                color="#8EFFA0"
+                                style={{ marginTop: 10 }}
+                            />
+                        )}
                     </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
 
-            {/*---------------------------------------------
-          Gebruikersnaam Modal
-      ---------------------------------------------*/}
+            {/* -------------------------------------------------------------
+                Gebruikersnaam Modal (alleen als geen profiel)
+            ------------------------------------------------------------- */}
             <Modal visible={usernameModalVisible} animationType="fade" transparent>
                 <TouchableOpacity
                     activeOpacity={1}
@@ -252,20 +473,27 @@ const JoinGameScreen = () => {
                             editable={!loading}
                         />
                         {loading ? (
-                            <ActivityIndicator size="large" color="#8EFFA0" />
+                            <ActivityIndicator
+                                size="large"
+                                color="#8EFFA0"
+                                style={{ marginTop: 10 }}
+                            />
                         ) : (
                             <View style={styles.modalButtons}>
                                 <TouchableOpacity
-                                    style={[styles.button, { flex: 1, marginRight: 8 }]}
+                                    style={[styles.modalButton, { flex: 1, marginRight: 8 }]}
                                     onPress={handleSubmitUsername}
                                 >
-                                    <Text style={styles.buttonText}>OK</Text>
+                                    <Text style={styles.modalButtonText}>OK</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.button, { backgroundColor: "#FF6B6B", flex: 1 }]}
+                                    style={[
+                                        styles.modalButton,
+                                        { backgroundColor: "#FF6B6B", flex: 1 },
+                                    ]}
                                     onPress={() => setUsernameModalVisible(false)}
                                 >
-                                    <Text style={styles.buttonText}>Annuleren</Text>
+                                    <Text style={styles.modalButtonText}>Annuleren</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -282,44 +510,101 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#11121A",
-        alignItems: "center",
-        justifyContent: "center",
+        paddingTop: 30, // schuift alles iets naar beneden
+    },
+    scrollContent: {
         padding: 20,
     },
     title: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: "bold",
-        color: "#8EFFA0",
-        marginBottom: 10,
+        color: "#FFFFFF",
+        marginBottom: 25, // extra ruimte onder de titel
+        alignSelf: "center",
     },
-    subtitle: {
-        fontSize: 16,
-        color: "#ffffff",
-        marginBottom: 40,
+    buttonRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 35, // extra ruimte tussen knoppen en publieke lobby's
     },
-    button: {
+    topButton: {
+        flex: 1,
         backgroundColor: "#8EFFA0",
-        paddingVertical: 15,
-        paddingHorizontal: 30,
-        borderRadius: 10,
-        marginBottom: 20,
-    },
-    buttonText: {
-        color: "#11121A",
-        fontWeight: "bold",
-        fontSize: 16,
-    },
-    manualContainer: {
-        width: "100%",
-        marginBottom: 20,
-    },
-    manualInput: {
-        width: "100%",
-        backgroundColor: "#1F202A",
-        color: "#fff",
-        padding: 12,
+        paddingVertical: 12,
         borderRadius: 8,
+        marginHorizontal: 5,
+        alignItems: "center",
+    },
+    topButtonText: {
+        color: "#11121A",
         fontSize: 16,
+        fontWeight: "bold",
+    },
+    publicHeaderRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 20, // extra ruimte onder dit label
+        paddingHorizontal: 5,
+    },
+    sectionLabel: {
+        color: "#AAAAAA",
+        fontSize: 14,
+        fontWeight: "500",
+    },
+    refreshBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        backgroundColor: "#8EFFA0",
+        borderRadius: 6,
+    },
+    refreshText: {
+        color: "#11121A",
+        fontSize: 12,
+        fontWeight: "bold",
+    },
+    lobbyList: {
+        height: 200,
+        marginTop: 10, // kleine ruimte tussen header en lijst
+    },
+    lobbyCard: {
+        width: 120,
+        marginRight: 15,
+        alignItems: "center",
+    },
+    lobbyImage: {
+        width: 120,
+        height: 80,
+        borderRadius: 8,
+        backgroundColor: "#2A2B35",
+    },
+    placeholderImage: {
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    placeholderText: {
+        color: "#888",
+        fontSize: 12,
+    },
+    lobbyLabel: {
+        color: "#FFFFFF",
+        fontSize: 14,
+        marginTop: 6,
+        textAlign: "center",
+    },
+    playerCountRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 4,
+    },
+    playerCountText: {
+        color: "#FFFFFF",
+        fontSize: 12,
+        marginRight: 4,
+    },
+    playerCountIcon: {
+        color: "#8EFFA0",
+        fontSize: 12,
     },
     permissionText: {
         color: "#fff",
@@ -357,6 +642,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         borderRadius: 8,
         marginTop: 10,
+        alignItems: "center",
     },
     modalButtonText: {
         color: "#11121A",
@@ -373,5 +659,18 @@ const styles = StyleSheet.create({
         backgroundColor: "rgba(0,0,0,0.5)",
         justifyContent: "center",
         alignItems: "center",
+    },
+    // Toegevoegde styles voor de close-knop
+    closeButtonAbsolute: {
+        position: "absolute",
+        top: 20,
+        right: 20,
+        zIndex: 10,
+        padding: 8,
+    },
+    closeIcon: {
+        width: 24,
+        height: 24,
+        resizeMode: "contain",
     },
 });

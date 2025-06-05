@@ -1,3 +1,5 @@
+// app/screen/ProfileScreen.tsx
+
 import React, { useState, useEffect } from "react";
 import {
     View,
@@ -16,10 +18,13 @@ import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CloseButton from "@/components/CloseButton";
 import { useRouter } from "expo-router";
+import { supabase } from "@/lib/supabase";
 
-const PROFILE_KEY = "@user_profile";
+// Gebruik dezelfde key als in HomeScreen en JoinGameScreen
+const HOME_PROFILE_KEY = "@user_profile";
 
 type ProfileData = {
+    playerId: string;
     imageUri: string | null;
     username: string;
     age: string;
@@ -28,37 +33,49 @@ type ProfileData = {
 
 export default function ProfileScreen() {
     const router = useRouter();
+
+    // State voor profielvelden
     const [imageUri, setImageUri] = useState<string | null>(null);
-    const [username, setUsername] = useState("Diego");
-    const [age, setAge] = useState("12");
-    const [gender, setGender] = useState("x");
+    const [username, setUsername] = useState("");
+    const [age, setAge] = useState("");
+    const [gender, setGender] = useState("");
     const [editing, setEditing] = useState(false);
 
+    // Null betekent: gebruiker nog niet in DB
+    const [playerId, setPlayerId] = useState<string | null>(null);
+
+    // Tijdens opslaan knop uitschakelen
+    const [saving, setSaving] = useState(false);
+
+    // Bij mount: laad profiel (incl. playerId) uit AsyncStorage
     useEffect(() => {
         (async () => {
             try {
-                const json = await AsyncStorage.getItem(PROFILE_KEY);
+                const json = await AsyncStorage.getItem(HOME_PROFILE_KEY);
                 if (json) {
                     const data: ProfileData = JSON.parse(json);
                     setImageUri(data.imageUri);
                     setUsername(data.username);
                     setAge(data.age);
                     setGender(data.gender);
+                    setPlayerId(data.playerId);
                 }
-            } catch {
-                // fallback naar defaults
+            } catch (err) {
+                console.warn("Fout bij lezen van AsyncStorage:", err);
             }
         })();
     }, []);
 
-    const saveProfile = async (data: ProfileData) => {
+    // Helper: sla ProfileData op in AsyncStorage
+    const saveProfileLocally = async (data: ProfileData) => {
         try {
-            await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(data));
-        } catch {
-            // foutbehandeling indien nodig
+            await AsyncStorage.setItem(HOME_PROFILE_KEY, JSON.stringify(data));
+        } catch (err) {
+            console.warn("Fout bij opslaan in AsyncStorage:", err);
         }
     };
 
+    // Foto kiezen (alleen lokaal opslaan; DB slaat imageUri niet op)
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
@@ -74,30 +91,130 @@ export default function ProfileScreen() {
         if (!result.canceled && result.assets.length > 0) {
             const uri = result.assets[0].uri;
             setImageUri(uri);
-            await saveProfile({ imageUri: uri, username, age, gender });
+
+            if (playerId) {
+                // Alleen opslaan in AsyncStorage
+                await saveProfileLocally({
+                    playerId,
+                    imageUri: uri,
+                    username,
+                    age,
+                    gender,
+                });
+            }
         }
     };
 
+    // Wissel tussen “Wijzig profiel” en “Opslaan”
     const toggleEditing = async () => {
         if (editing) {
-            await saveProfile({ imageUri, username, age, gender });
+            // Gebruiker klikt op “Opslaan”
+            if (!username.trim()) {
+                Alert.alert("Fout", "Gebruikersnaam mag niet leeg zijn.");
+                return;
+            }
+
+            setSaving(true);
+
+            // 1) Als playerId bestaat, probeer te updaten
+            if (playerId) {
+                console.log(`Probeer UPDATE voor speler ${playerId} → naam = ${username.trim()}`);
+                const { data: updateData, error: updateError } = await supabase
+                    .from("players")
+                    .update({ name: username.trim() })
+                    .eq("id", playerId)
+                    .select("id, name")
+                    .maybeSingle(); // maybeSingle voorkomt error als geen rij
+
+                if (updateError) {
+                    console.error("UPDATE fout:", updateError);
+                    Alert.alert("Fout bij bijwerken speler", updateError.message);
+                    setSaving(false);
+                    return;
+                }
+
+                // Als updateData null is, betekent dat er geen bestaande rij was
+                if (updateData) {
+                    console.log("UPDATE geslaagd, retour-data:", updateData);
+                    await saveProfileLocally({
+                        playerId,
+                        imageUri,
+                        username,
+                        age,
+                        gender,
+                    });
+                } else {
+                    // Geen rij gevonden → val terug op INSERT
+                    console.log(`Geen speler met ID ${playerId} gevonden, doe INSERT.`);
+                    const nowIso = new Date().toISOString();
+                    const { data: insertData, error: insertError } = await supabase
+                        .from("players")
+                        .insert([{ name: username.trim(), joined_at: nowIso }])
+                        .select("id, name")
+                        .single();
+
+                    if (insertError || !insertData) {
+                        console.error("INSERT fout:", insertError);
+                        Alert.alert("Fout bij aanmaken speler", insertError?.message || "");
+                        setSaving(false);
+                        return;
+                    }
+
+                    const newId = insertData.id;
+                    console.log("INSERT geslaagd, nieuwe ID:", newId);
+                    setPlayerId(newId);
+
+                    await saveProfileLocally({
+                        playerId: newId,
+                        imageUri,
+                        username,
+                        age,
+                        gender,
+                    });
+                }
+            } else {
+                // 2) playerId is null → INSERT
+                console.log(`Voer INSERT uit, nieuwe speler = ${username.trim()}`);
+                const nowIso = new Date().toISOString();
+                const { data: insertData, error: insertError } = await supabase
+                    .from("players")
+                    .insert([{ name: username.trim(), joined_at: nowIso }])
+                    .select("id, name")
+                    .single();
+
+                if (insertError || !insertData) {
+                    console.error("INSERT fout:", insertError);
+                    Alert.alert("Fout bij aanmaken speler", insertError?.message || "");
+                    setSaving(false);
+                    return;
+                }
+
+                const newId = insertData.id;
+                console.log("INSERT geslaagd, nieuwe ID:", newId);
+                setPlayerId(newId);
+
+                await saveProfileLocally({
+                    playerId: newId,
+                    imageUri,
+                    username,
+                    age,
+                    gender,
+                });
+            }
+
+            setSaving(false);
         }
+
         setEditing((prev) => !prev);
     };
 
     const handleDeleteAccount = () => {
-        // Amber-alert-achtig patroon: op Android patroon, op iOS lange vibratie
         if (Platform.OS === "android") {
             Vibration.vibrate([0, 500, 200, 500, 200, 500], false);
         } else {
-            Vibration.vibrate(100000); // 1 seconde op iOS
+            Vibration.vibrate(1000);
         }
-
-        Alert.alert(
-            "⚠️ Niet doen!",
-            "pls.",
-            [{ text: "😱", style: "default" }]
-        );
+        Alert.alert("⚠️ Niet doen!", "pls.", [{ text: "😱", style: "default" }]);
     };
 
     return (
@@ -139,8 +256,14 @@ export default function ProfileScreen() {
                             placeholderTextColor="#777"
                             keyboardType="numeric"
                         />
-                        <TouchableOpacity style={styles.button} onPress={toggleEditing}>
-                            <Text style={styles.buttonText}>Opslaan</Text>
+                        <TouchableOpacity
+                            style={styles.button}
+                            onPress={toggleEditing}
+                            disabled={saving}
+                        >
+                            <Text style={styles.buttonText}>
+                                {saving ? "Bezig..." : "Opslaan"}
+                            </Text>
                         </TouchableOpacity>
                     </>
                 ) : (

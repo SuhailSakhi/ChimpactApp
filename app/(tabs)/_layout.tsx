@@ -66,7 +66,7 @@ export default function TabLayout() {
             <Tabs.Screen name="host" options={{ href: null }} />
             <Tabs.Screen name="join" options={{ href: null }} />
             <Tabs.Screen name="lobbyHost" options={{ href: null }} />
-            <Tabs.Screen name="lobbyJoin" options={{ href: null }} />
+            <Tabs.Screen name="lobbyUser" options={{ href: null }} />
             <Tabs.Screen name="start" options={{ href: null }} />
         </Tabs>
     );

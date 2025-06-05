@@ -1,108 +1,302 @@
 // app/screen/LobbyScreen.tsx
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     Modal,
-    FlatList,
     ActivityIndicator,
     Alert,
+    ScrollView,
+    Image,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import { useRouter, useLocalSearchParams } from "expo-router"; // let op: useLocalSearchParams i.p.v. useSearchParams
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 
-// Type voor gebruikers (we gebruiken hier alleen een string-naam)
-type User = {
-    id: string;
-    name: string;
-};
+// Type voor spelers (array met strings)
+type LobbyPlayer = string;
 
 const LobbyScreen = () => {
     const router = useRouter();
-    const { code: codeParam, isHost: isHostParam } =
-        useLocalSearchParams<{
-            code: string;
-            isHost: string;
-        }>(); // gebruik useLocalSearchParams i.p.v. useSearchParams
+    const { code, isHost: initialIsHost, username } = useLocalSearchParams<{
+        code: string;
+        isHost: "true" | "false";
+        username: string;
+    }>();
 
-    // Zet de route-param om naar booleaanse waarde
-    const isHost = isHostParam === "true";
+    console.log("▶ LobbyScreen mount: received params →", {
+        code,
+        initialIsHost,
+        username,
+    });
 
-    // State voor lobbycode en deelnemers
-    const [lobbyCode, setLobbyCode] = useState<string>(codeParam || "");
-    const [users, setUsers] = useState<User[]>([]);
+    // __________________ State
+    const [players, setPlayers] = useState<LobbyPlayer[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [settingsVisible, setSettingsVisible] = useState(false);
+    const [lobbyId, setLobbyId] = useState<string | null>(null);
 
-    // Haal de lobby (en spelers-array) op uit Supabase
-    useEffect(() => {
-        if (!lobbyCode) {
-            Alert.alert("Fout", "Geen lobbycode meegegeven.");
-            setLoading(false);
+    // Ref om de allereerste kick‐check te skippen
+    const initialLoadRef = useRef(true);
+
+    // Ref om navigatie maar één keer na game start uit te voeren
+    const hasNavigatedRef = useRef(false);
+
+    // Host?“players[0] === username” (eerst toegevoegde speler is host)
+    const isCurrentHost = players.length > 0 && players[0] === username;
+
+    // ____________________ Database‐calls
+
+    // --- Initial fetch:
+    // Haal lobby‐document op: id, players, game_started, hunter
+    const fetchInitialLobby = useCallback(async () => {
+        if (!code) return;
+        setLoading(true);
+
+        const { data, error } = await supabase
+            .from("lobbies")
+            .select("id, players, game_started, hunter")
+            .eq("code", code)        // code is varchar
+            .single();
+
+        setLoading(false);
+
+        if (error || !data) {
+            Alert.alert("Fout", "Kon lobby niet vinden.");
             return;
         }
 
-        const fetchLobby = async () => {
-            setLoading(true);
-            const { data, error } = await supabase
-                .from("lobbies")
-                .select("players")
-                .eq("code", lobbyCode)
-                .single(); // we verwachten precies één record
+        setLobbyId(data.id);
+        setPlayers(data.players || []);
+        console.log("▶ Initial fetch players:", data.players);
 
-            if (error) {
-                Alert.alert("Fout bij ophalen lobby", error.message);
-                setLoading(false);
-                return;
+        // Als game al gestart is en we nog niet genavigeerd hebben,
+        // navigeren we op basis van data.hunter:
+        if (data.game_started && !hasNavigatedRef.current) {
+            hasNavigatedRef.current = true;
+
+            if (username === data.hunter) {
+                router.replace({
+                    pathname: "/screen/HunterScreen",
+                    params: { lobbyCode: code, playerName: username },
+                });
+            } else {
+                router.replace({
+                    pathname: "/screen/RunnerScreen",
+                    params: { lobbyCode: code, playerName: username },
+                });
             }
+        }
+    }, [code, username, router]);
 
-            // data.players is een text[] met gebruikersnamen
-            // Mappen naar een User-array met unieke id's (indien gewenst kun je een uuid gebruiken)
-            const fetchedPlayers = (data.players || []).map(
-                (name: string, idx: number) => ({
-                    id: idx.toString(),
-                    name,
-                })
-            );
-            setUsers(fetchedPlayers);
-            setLoading(false);
+    useEffect(() => {
+        fetchInitialLobby();
+    }, [fetchInitialLobby]);
+
+    // --- Periodieke fetch elke 2 seconden:
+    // Houd players, game_started en hunter up-to-date
+    const fetchPeriodic = useCallback(async () => {
+        if (!code) return;
+
+        const { data, error } = await supabase
+            .from("lobbies")
+            .select("players, game_started, hunter")
+            .eq("code", code)
+            .single();
+
+        if (!error && data) {
+            setPlayers(data.players || []);
+
+            // Als het spel net gestart is en we nog niet genavigeerd hebben:
+            if (data.game_started && !hasNavigatedRef.current) {
+                hasNavigatedRef.current = true;
+
+                if (username === data.hunter) {
+                    router.replace({
+                        pathname: "/screen/HunterScreen",
+                        params: { lobbyCode: code, playerName: username },
+                    });
+                } else {
+                    router.replace({
+                        pathname: "/screen/RunnerScreen",
+                        params: { lobbyCode: code, playerName: username },
+                    });
+                }
+            }
+        }
+    }, [code, username, router]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchPeriodic();
+        }, 2000);
+        return () => clearInterval(interval);
+    }, [fetchPeriodic]);
+
+    // --- Realtime‐subscriptie op updates voor deze lobby:
+    // Zo hoeven we niet steeds handmatig te poll-en.
+    useEffect(() => {
+        if (!lobbyId) return;
+
+        const channel = supabase
+            .channel(`lobby_updates_${lobbyId}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "lobbies",
+                    filter: `id=eq.${lobbyId}`,
+                },
+                (payload: any) => {
+                    const updatedPlayers: LobbyPlayer[] = payload.new.players || [];
+                    setPlayers(updatedPlayers);
+                    console.log("▶ Realtime update players:", updatedPlayers);
+
+                    // Als game net is begonnen:
+                    if (payload.new.game_started && !hasNavigatedRef.current) {
+                        hasNavigatedRef.current = true;
+
+                        if (username === payload.new.hunter) {
+                            router.replace({
+                                pathname: "/screen/HunterScreen",
+                                params: { lobbyCode: code, playerName: username },
+                            });
+                        } else {
+                            router.replace({
+                                pathname: "/screen/RunnerScreen",
+                                params: { lobbyCode: code, playerName: username },
+                            });
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
         };
+    }, [lobbyId, username, code, router]);
 
-        fetchLobby();
-    }, [lobbyCode]);
+    // ____________________ Cleanup unmount:
+    // Verwijder huidige user uit players‐array als je uit de App sluit.
+    useEffect(() => {
+        return () => {
+            console.log(
+                "▶ LobbyScreen cleanup: username:",
+                username,
+                "lobbyId:",
+                lobbyId
+            );
+            if (!lobbyId || !username) return;
 
-    // Host kan gebruikers “kicken” (alleen UI-gewijs; voor persistente update moet je dit in de DB doen)
-    const kickUser = (id: string) => {
-        setUsers((prev) => prev.filter((user) => user.id !== id));
-        // Voor persistente update in Supabase kun je iets als:
-        // supabase
-        //   .from("lobbies")
-        //   .update({ players: users.filter((u) => u.id !== id).map((u) => u.name) })
-        //   .eq("code", lobbyCode);
+            (async () => {
+                const { data: lobbyData, error: fetchError } = await supabase
+                    .from("lobbies")
+                    .select("players")
+                    .eq("id", lobbyId)
+                    .single();
+
+                if (!fetchError && lobbyData) {
+                    const existingPlayers: string[] = lobbyData.players || [];
+                    const updatedPlayers = existingPlayers.filter((p) => p !== username);
+
+                    await supabase
+                        .from("lobbies")
+                        .update({ players: updatedPlayers })
+                        .eq("id", lobbyId);
+                }
+            })();
+        };
+    }, [lobbyId, username]);
+    // ------------------------------------------------------------------------------
+
+    // Host kan andere gebruikers kicken
+    const kickUser = async (playerName: string) => {
+        if (!lobbyId) return;
+        const updatedPlayers = players.filter((p) => p !== playerName);
+
+        const { error } = await supabase
+            .from("lobbies")
+            .update({ players: updatedPlayers })
+            .eq("id", lobbyId);
+
+        if (error) {
+            Alert.alert("Fout bij verwijderen speler", error.message);
+        }
     };
 
-    // Render één deelnemer
-    const renderUser = ({ item }: { item: User }) => (
-        <View style={styles.userRow}>
-            <Text style={styles.userName}>{item.name}</Text>
-            {isHost && (
-                <TouchableOpacity
-                    onPress={() => kickUser(item.id)}
-                    style={styles.kickButton}
-                >
-                    <Text style={styles.kickText}>Kick</Text>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
+    // Als een niet‐host uit de players‐lijst verdwijnt → terug naar home
+    useEffect(() => {
+        if (!isCurrentHost && username) {
+            if (initialLoadRef.current) {
+                initialLoadRef.current = false;
+                return;
+            }
+            const stillInLobby = players.includes(username);
+            if (!stillInLobby) {
+                Alert.alert("Je bent gekickt", "Je bent uit de lobby verwijderd.", [
+                    {
+                        text: "OK",
+                        onPress: () => {
+                            router.replace("/");
+                        },
+                    },
+                ]);
+            }
+        }
+    }, [players, isCurrentHost, username, router]);
+    // ------------------------------------------------------------------------------
+
+    // Render één rij met username (+ “(Host)” als idx=0)
+    const renderUser = (playerName: LobbyPlayer, idx: number) => {
+        const isThisHost = idx === 0;
+        return (
+            <View key={playerName} style={styles.userRow}>
+                <Text style={styles.userName}>
+                    {playerName}
+                    {isThisHost ? " (Host)" : ""}
+                </Text>
+                {isCurrentHost && !isThisHost && (
+                    <TouchableOpacity
+                        onPress={() => kickUser(playerName)}
+                        style={styles.kickButton}
+                    >
+                        <Text style={styles.kickText}>Kick</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    };
+
+    // ____________________ Start Spel: wijs random hunter toe, update in DB
+    const handleStartGame = async () => {
+        if (!lobbyId || players.length === 0) return;
+
+        // Kies random speler uit players-array
+        const randomIndex = Math.floor(Math.random() * players.length);
+        const chosenHunter = players[randomIndex];
+
+        // Update lobby‐rij: zet game_started en hunter
+        const { error } = await supabase
+            .from("lobbies")
+            .update({ game_started: true, hunter: chosenHunter })
+            .eq("id", lobbyId);
+
+        if (error) {
+            Alert.alert("Fout bij starten spel", error.message);
+        }
+        // Nadien navigatie voor alle clients via realtime‐subscriber
+    };
+
+    // ____________________ Renderen / Return
 
     if (loading) {
         return (
-            <View style={[styles.container, { justifyContent: "center" }]}>
+            <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#8EFFA0" />
             </View>
         );
@@ -110,37 +304,31 @@ const LobbyScreen = () => {
 
     return (
         <View style={styles.container}>
-            {/* Lobby Code + QR-code */}
+            {/* Toegevoegd: wegknop, absoluut gepositioneerd zodat de rest niet verschuift */}
+            <TouchableOpacity
+                onPress={() => router.back()}
+                style={styles.closeButtonAbsolute}
+            >
+                <Image
+                    source={require("../../assets/images/arrow-back.png")}
+                    style={styles.closeIcon}
+                />
+            </TouchableOpacity>
+
             <Text style={styles.codeLabel}>Lobby Code:</Text>
-            <Text style={styles.lobbyCode}>{lobbyCode}</Text>
-            <View style={styles.qrContainer}>
-                <QRCode value={lobbyCode} size={160} backgroundColor="#fff" />
-            </View>
+            <Text style={styles.lobbyCode}>{code}</Text>
+            <QRCode value={code} size={160} backgroundColor="#fff" />
 
-            {/* Deelnemerslijst */}
             <Text style={styles.participantsTitle}>Deelnemers:</Text>
-            <FlatList
-                data={users}
-                keyExtractor={(item) => item.id}
-                renderItem={renderUser}
-                style={styles.userList}
-                ListEmptyComponent={
-                    <Text style={styles.emptyText}>Nog geen deelnemers</Text>
-                }
-            />
+            <ScrollView style={styles.userList}>
+                {players.map((player, idx) => renderUser(player, idx))}
+            </ScrollView>
 
-            {/* Host-knoppen onderaan */}
-            {isHost && (
+            {isCurrentHost && (
                 <View style={styles.hostControls}>
-                    {/* Start Spel */}
-                    <TouchableOpacity
-                        style={[styles.button, { marginBottom: 12 }]}
-                        onPress={() => router.push("../screen/HunterScreen")}
-                    >
+                    <TouchableOpacity style={styles.button} onPress={handleStartGame}>
                         <Text style={styles.buttonText}>Start Spel</Text>
                     </TouchableOpacity>
-
-                    {/* Spelinstellingen */}
                     <TouchableOpacity
                         style={styles.button}
                         onPress={() => setSettingsVisible(true)}
@@ -150,7 +338,7 @@ const LobbyScreen = () => {
                 </View>
             )}
 
-            {/* Instellingen Pop-up (Modal) */}
+            {/* Instellingen Pop-up */}
             <Modal
                 visible={settingsVisible}
                 transparent
@@ -183,6 +371,12 @@ const styles = StyleSheet.create({
         padding: 20,
         alignItems: "center",
     },
+    loadingContainer: {
+        flex: 1,
+        backgroundColor: "#1A1B25",
+        justifyContent: "center",
+        alignItems: "center",
+    },
     codeLabel: {
         fontSize: 16,
         color: "#ccc",
@@ -194,28 +388,16 @@ const styles = StyleSheet.create({
         color: "#8EFFA0",
         marginBottom: 10,
     },
-    qrContainer: {
-        backgroundColor: "#fff",
-        padding: 8,
-        borderRadius: 8,
-        marginBottom: 20,
-    },
     participantsTitle: {
+        marginTop: 20,
         fontSize: 20,
         fontWeight: "bold",
         color: "#fff",
-        alignSelf: "flex-start",
-        marginBottom: 8,
     },
     userList: {
         width: "100%",
-        marginBottom: 80, // ruimte laten voor de knoppen onderaan
-    },
-    emptyText: {
-        color: "#aaa",
-        fontStyle: "italic",
-        textAlign: "center",
-        marginTop: 20,
+        marginTop: 10,
+        maxHeight: 250,
     },
     userRow: {
         flexDirection: "row",
@@ -244,12 +426,15 @@ const styles = StyleSheet.create({
         bottom: 40,
         left: 20,
         right: 20,
+        gap: 15,
+        alignItems: "center",
     },
     button: {
         backgroundColor: "#8EFFA0",
         padding: 15,
         borderRadius: 10,
         alignItems: "center",
+        width: "100%",
     },
     buttonText: {
         color: "#11121A",
@@ -284,4 +469,18 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         color: "#11121A",
     },
+    // Toegevoegde styles voor de close-knop
+    closeButtonAbsolute: {
+        position: "absolute",
+        top: 20,
+        right: 20,
+        zIndex: 10,
+        padding: 8,
+    },
+    closeIcon: {
+        width: 24,
+        height: 24,
+        resizeMode: "contain",
+    },
 });
+

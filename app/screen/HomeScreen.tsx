@@ -1,6 +1,6 @@
 // app/screen/HomeScreen.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -11,31 +11,74 @@ import {
     ActivityIndicator,
     Alert,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+
+const HOME_PROFILE_KEY = "@user_profile";
 
 const HomeScreen = () => {
     const router = useRouter();
 
-    // Staat van de modal (popup) en de invoer voor gebruikersnaam
+    // In-memory staat voor opgeslagen profiel (of null als nog niet aangemaakt)
+    const [profile, setProfile] = useState<{ playerId: string; username: string } | null>(
+        null
+    );
+
+    // Staat voor modal & invoer, enkel nodig als er nog geen profiel bestaat
     const [modalVisible, setModalVisible] = useState<boolean>(false);
-    const [username, setUsername] = useState<string>("");
+    const [usernameInput, setUsernameInput] = useState<string>("");
     const [loading, setLoading] = useState<boolean>(false);
 
-    // “Spel aanmaken” opent de modal
-    const handleCreateGame = () => {
-        setUsername("");
-        setModalVisible(true);
+    // Bij mount: laad profiel (playerId + username) uit AsyncStorage
+    useEffect(() => {
+        (async () => {
+            const json = await AsyncStorage.getItem(HOME_PROFILE_KEY);
+            if (json) {
+                const data = JSON.parse(json) as {
+                    playerId: string;
+                    username: string;
+                };
+                setProfile({ playerId: data.playerId, username: data.username });
+            }
+        })();
+    }, []);
+
+    // “Spel aanmaken”: als profiel bestaat → direct naar HostGameScreen, anders modal
+    const handleCreateGame = async () => {
+        if (profile) {
+            router.push({
+                pathname: "/screen/HostGameScreen",
+                params: {
+                    playerId: profile.playerId,
+                    playerName: profile.username,
+                },
+            });
+        } else {
+            setUsernameInput("");
+            setModalVisible(true);
+        }
     };
 
-    // “Spel zoeken” navigeert rechtstreeks naar JoinGameScreen
+    // “Spel zoeken”: als profiel bestaat → direct naar JoinGameScreen, anders modal
     const handleSearchGame = () => {
-        router.push({ pathname: "/screen/JoinGameScreen" });
+        if (profile) {
+            router.push({
+                pathname: "/screen/JoinGameScreen",
+                params: {
+                    playerId: profile.playerId,
+                    playerName: profile.username,
+                },
+            });
+        } else {
+            setUsernameInput("");
+            setModalVisible(true);
+        }
     };
 
-    // Bij “OK” in de modal: maak speler aan en ga naar HostGameScreen
+    // Bij “OK” in de popup: maak nieuwe speler in DB + AsyncStorage en sla profiel op
     const handleSubmitUsername = async () => {
-        if (!username.trim()) {
+        if (!usernameInput.trim()) {
             Alert.alert("Fout", "Vul een gebruikersnaam in.");
             return;
         }
@@ -43,27 +86,28 @@ const HomeScreen = () => {
         setLoading(true);
         const nowIso = new Date().toISOString();
 
-        // 1. Insert in tabel “players”
+        // 1) Insert into “players” tabel
         const { data, error } = await supabase
             .from("players")
-            .insert([
-                {
-                    name: username.trim(),
-                    joined_at: nowIso,
-                },
-            ])
+            .insert([{ name: usernameInput.trim(), joined_at: nowIso }])
             .select("id,name")
             .single();
 
         setLoading(false);
 
-        if (error) {
-            Alert.alert("Fout bij aanmaken speler", error.message);
+        if (error || !data) {
+            Alert.alert("Fout bij aanmaken speler", error?.message || "");
             return;
         }
 
-        // 2. Sluit de modal en navigeer naar HostGameScreen met playerId + playerName
+        // 2) Sla profiel lokaal op en update in-memory staat
+        const profileData = { playerId: data.id, username: data.name };
+        await AsyncStorage.setItem(HOME_PROFILE_KEY, JSON.stringify(profileData));
+        setProfile(profileData);
         setModalVisible(false);
+
+        // 3) Navigeer direct naar HostGameScreen (indien create) of JoinGameScreen (indien search)
+        //    Hier kiezen we Create, omdat dit vanuit deze functie standaard “Spel aanmaken” afhandelt.
         router.push({
             pathname: "/screen/HostGameScreen",
             params: {
@@ -77,12 +121,10 @@ const HomeScreen = () => {
         <View style={styles.container}>
             <Text style={styles.title}>Welkom bij ChimpactApp!</Text>
 
-            {/* Spel aanmaken */}
             <TouchableOpacity style={styles.button} onPress={handleCreateGame}>
                 <Text style={styles.buttonText}>Spel aanmaken</Text>
             </TouchableOpacity>
 
-            {/* Spel zoeken */}
             <TouchableOpacity
                 style={[styles.button, { marginTop: 15 }]}
                 onPress={handleSearchGame}
@@ -91,8 +133,8 @@ const HomeScreen = () => {
             </TouchableOpacity>
 
             {/* -------------------------------------------------------------
-          Modal: vraag om gebruikersnaam voordat we doorgaan
-      ------------------------------------------------------------- */}
+                Modal alleen als er nog geen profiel (playerId + username) is
+            ------------------------------------------------------------- */}
             <Modal
                 visible={modalVisible}
                 transparent
@@ -107,8 +149,8 @@ const HomeScreen = () => {
                             style={styles.modalInput}
                             placeholder="Gebruikersnaam"
                             placeholderTextColor="#999"
-                            value={username}
-                            onChangeText={setUsername}
+                            value={usernameInput}
+                            onChangeText={setUsernameInput}
                             editable={!loading}
                         />
 
@@ -117,13 +159,31 @@ const HomeScreen = () => {
                         ) : (
                             <View style={styles.modalButtons}>
                                 <TouchableOpacity
-                                    style={[styles.button, { flex: 1, marginRight: 8 }]}
+                                    style={[
+                                        styles.button,
+                                        {
+                                            flex: 1,
+                                            marginRight: 8,
+                                            minWidth: 0,
+                                            paddingVertical: 10,
+                                            paddingHorizontal: 20,
+                                        },
+                                    ]}
                                     onPress={handleSubmitUsername}
                                 >
                                     <Text style={styles.buttonText}>OK</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.button, { backgroundColor: "#FF6B6B", flex: 1 }]}
+                                    style={[
+                                        styles.button,
+                                        {
+                                            backgroundColor: "#FF6B6B",
+                                            flex: 1,
+                                            minWidth: 0,
+                                            paddingVertical: 10,
+                                            paddingHorizontal: 20,
+                                        },
+                                    ]}
                                     onPress={() => setModalVisible(false)}
                                 >
                                     <Text style={styles.buttonText}>Annuleren</Text>
@@ -167,8 +227,6 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         fontSize: 16,
     },
-
-    /* Modal-styling */
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
